@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArenaStats Simple</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            background: #0b0b0f;
+            color: white;
+        }
+        .wrap {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        .card {
+            background: #15151d;
+            border: 1px solid #2a2a36;
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        input, select, textarea, button {
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background: #101018;
+            color: white;
+        }
+        button {
+            background: #4f7cff;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #262632;
+        }
+        .small {
+            color: #aaa;
+            font-size: 12px;
+        }
+        .win { color: #7CFC98; }
+        .loss { color: #FF8E8E; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h1>ArenaStats Simple</h1>
+        <div class="small">MTGアリーナ用 勝率メモアプリ（簡易版）</div>
+
+        <div class="card">
+            <h2>デッキ情報</h2>
+            <input id="deckName" placeholder="デッキ名" />
+            <input id="deckFormat" placeholder="フォーマット（例: Standard）" />
+            <input id="deckArchetype" placeholder="アーキタイプ（例: Esper Control）" />
+            <button onclick="saveDeck()">デッキ保存</button>
+        </div>
+
+        <div class="card">
+            <h2>対戦登録</h2>
+            <select id="result">
+                <option value="win">勝ち</option>
+                <option value="loss">負け</option>
+            </select>
+            <select id="isBo3">
+                <option value="false">Bo1</option>
+                <option value="true">Bo3</option>
+            </select>
+            <input id="eventType" placeholder="イベント種別（例: Ranked）" />
+            <input id="opponent" placeholder="相手アーキタイプ" />
+            <select id="wentFirst">
+                <option value="true">先手</option>
+                <option value="false">後手</option>
+            </select>
+            <textarea id="notes" placeholder="メモ"></textarea>
+            <button onclick="addMatch()">対戦を追加</button>
+        </div>
+
+        <div class="card">
+            <h2>集計</h2>
+            <div id="summary"></div>
+        </div>
+
+        <div class="card">
+            <h2>履歴</h2>
+            <div id="history"></div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = "arena_simple_data";
+
+        let data = loadData();
+
+        function loadData() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) return JSON.parse(raw);
+            return {
+                deck: {
+                    name: "",
+                    format: "",
+                    archetype: ""
+                },
+                matches: []
+            };
+        }
+
+        function persist() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            render();
+        }
+
+        function saveDeck() {
+            data.deck.name = document.getElementById("deckName").value;
+            data.deck.format = document.getElementById("deckFormat").value;
+            data.deck.archetype = document.getElementById("deckArchetype").value;
+            persist();
+            alert("デッキを保存しました");
+        }
+
+        function addMatch() {
+            const match = {
+                date: new Date().toISOString(),
+                result: document.getElementById("result").value,
+                isBo3: document.getElementById("isBo3").value === "true",
+                eventType: document.getElementById("eventType").value,
+                opponent: document.getElementById("opponent").value,
+                wentFirst: document.getElementById("wentFirst").value === "true",
+                notes: document.getElementById("notes").value
+            };
+            data.matches.unshift(match);
+            persist();
+        }
+
+        function deleteMatch(index) {
+            data.matches.splice(index, 1);
+            persist();
+        }
+
+        function render() {
+            document.getElementById("deckName").value = data.deck.name || "";
+            document.getElementById("deckFormat").value = data.deck.format || "";
+            document.getElementById("deckArchetype").value = data.deck.archetype || "";
+
+            const wins = data.matches.filter(m => m.result === "win").length;
+            const losses = data.matches.filter(m => m.result === "loss").length;
+            const total = wins + losses;
+            const rate = total ? Math.round((wins / total) * 100) : 0;
+
+            document.getElementById("summary").innerHTML = `
+                <div><b>${data.deck.name || "デッキ未設定"}</b></div>
+                <div class="small">${data.deck.archetype || ""} ${data.deck.format ? "• " + data.deck.format : ""}</div>
+                <div style="font-size:36px; font-weight:bold; margin-top:8px;">${rate}%</div>
+                <div>${wins}勝 ${losses}敗</div>
+            `;
+
+            const history = document.getElementById("history");
+            if (data.matches.length === 0) {
+                history.innerHTML = `<div class="small">まだ対戦履歴がありません</div>`;
+                return;
+            }
+
+            history.innerHTML = data.matches.map((m, i) => `
+                <div class="row">
+                    <div>
+                        <div class="${m.result === 'win' ? 'win' : 'loss'}"><b>${m.result.toUpperCase()}</b></div>
+                        <div>${m.eventType || "Ranked"} • ${m.isBo3 ? "Bo3" : "Bo1"}</div>
+                        <div class="small">相手: ${m.opponent || "Unknown"} / ${m.wentFirst ? "先手" : "後手"}</div>
+                        <div class="small">${new Date(m.date).toLocaleString()}</div>
+                        <div class="small">${m.notes || ""}</div>
+                    </div>
+                    <div>
+                        <button onclick="deleteMatch(${i})" style="width:auto;background:#8b2f2f;">削除</button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        render();
+    </script>
+</body>
+</html>
