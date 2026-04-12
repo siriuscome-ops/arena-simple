@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArenaStats Complete</title>
+  <meta name="theme-color" content="#0b0b0f" />
+  <style>
+    :root {
+      --bg: #0b0b0f;
+      --panel: #14141c;
+      --panel-2: #101018;
+      --line: #262634;
+      --text: #f6f7fb;
+      --muted: #a7acb8;
+      --accent: #5b8cff;
+      --danger: #b44a4a;
+      --shadow: 0 8px 24px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    button, input, select, textarea { font: inherit; }
+    .app { display: grid; grid-template-columns: 340px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      background: #0f0f15;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .main { padding: 16px; }
+    .titlebar {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .title { font-size: 22px; font-weight: 900; line-height: 1.1; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .global-summary {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid #314261;
+      background: #121a28;
+      box-shadow: var(--shadow);
+    }
+    .global-summary .label { color: #aecaFF; font-size: 12px; margin: 0 0 4px; }
+    .global-summary .value { font-size: 28px; font-weight: 1000; line-height: 1; margin: 4px 0; }
+    .global-summary .meta { color: var(--muted); font-size: 12px; }
+    .search, .input, .select, .textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      outline: none;
+    }
+    .textarea { min-height: 88px; resize: vertical; }
+    .btn {
+      border: 1px solid var(--line);
+      background: #1a1a24;
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.primary { background: var(--accent); border-color: transparent; font-weight: 800; }
+    .btn.secondary { background: #1b2232; }
+    .btn.danger { background: #2b1717; border-color: #5c2f2f; }
+    .btn.ghost { background: transparent; }
+    .stack { display: grid; gap: 10px; }
+    .deck-list { margin-top: 12px; display: grid; gap: 10px; }
+    .deck-card {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 12px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+    .deck-card.active { outline: 2px solid var(--accent); }
+    .deck-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .deck-name { font-weight: 800; font-size: 15px; }
+    .deck-rate { font-weight: 900; font-size: 18px; }
+    .deck-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+    .page-title { font-size: 28px; font-weight: 900; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+    .hero { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; margin-bottom: 14px; }
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .card h3 { margin: 0 0 12px; font-size: 16px; }
+    .big-rate { font-size: 48px; font-weight: 1000; line-height: 1; margin: 6px 0; }
+    .muted { color: var(--muted); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .stat-box {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .stat-box .label { color: var(--muted); font-size: 12px; }
+    .stat-box .value { font-size: 22px; font-weight: 900; margin-top: 4px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1.2fr; gap: 14px; margin-bottom: 14px; }
+    .table { display: grid; gap: 8px; }
+    .trow {
+      display: grid;
+      grid-template-columns: 1fr 80px 100px;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid #20202c;
+      padding-bottom: 8px;
+    }
+    .filters { display: grid; grid-template-columns: 120px 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .matches { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
+    .match {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    .pill { border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; }
+    .pill.win { background: rgba(40,167,69,.18); border: 1px solid rgba(40,167,69,.45); color: #8be3a0; }
+    .pill.loss { background: rgba(201,75,75,.18); border: 1px solid rgba(201,75,75,.45); color: #ff9999; }
+    .match-title { font-weight: 800; margin-bottom: 4px; }
+    .match-meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .notes { margin-top: 6px; font-size: 13px; }
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 70vh;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+    }
+    dialog {
+      width: min(760px, calc(100vw - 24px));
+      border: 1px solid var(--line);
+      background: #101018;
+      color: var(--text);
+      border-radius: 20px;
+      padding: 0;
+      box-shadow: 0 24px 48px rgba(0,0,0,.45);
+    }
+    dialog::backdrop { background: rgba(0,0,0,.55); }
+    .dialog-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 16px 0;
+    }
+    .dialog-title { font-size: 20px; font-weight: 900; }
+    .dialog-body { padding: 16px; }
+    .form-grid { display: grid; gap: 12px; }
+    .form-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+    .dialog-actions { display: flex; justify-content: end; gap: 10px; padding: 0 16px 16px; }
+    .footer-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #1a2234;
+      border: 1px solid #314261;
+      color: #aecaFF;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .actions-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .hidden { display: none !important; }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .hero, .grid-2, .form-2, .form-3 { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .filters { grid-template-columns: 1fr; }
+      .page-head { align-items: start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <dialog id="deckDialog">
+    <div class="dialog-head">
+      <div class="dialog-title" id="deckDialogTitle">デッキ追加</div>
+      <button class="btn ghost" onclick="closeDialog('deckDialog')">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div>
+          <label class="label">デッキ名</label>
+          <input id="deck_name" class="input" placeholder="例: Esper Midrange" />
+        </div>
+        <div class="form-2">
+          <div>
+            <label class="label">フォーマット</label>
+            <input id="deck_format" class="input" placeholder="例: Standard" />
+          </div>
+          <div>
+            <label class="label">アーキタイプ</label>
+            <input id="deck_archetype" class="input" placeholder="例: Esper" />
+          </div>
+        </div>
+        <div>
+          <label class="label">メモ</label>
+          <textarea id="deck_notes" class="textarea" placeholder="デッキの特徴や採用理由など"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn" onclick="closeDialog('deckDialog')">キャンセル</button>
+      <button class="btn primary" onclick="saveDeckFromDialog()">保存</button>
+    </div>
+  </dialog>
+
+  <dialog id="matchDialog">
+    <div class="dialog-head">
+      <div class="dialog-title">対戦結果を追加</div>
+      <button class="btn ghost" onclick="closeDialog('matchDialog')">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div class="form-3">
+          <div>
+            <label class="label">結果</label>
+            <select id="match_result" class="select">
+              <option value="win">勝ち</option>
+              <option value="loss">負け</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Bo形式</label>
+            <select id="match_bo" class="select">
+              <option value="false">Bo1</option>
+              <option value="true">Bo3</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">先手/後手</label>
+            <select id="match_first" class="select">
+              <option value="true">先手</option>
+              <option value="false">後手</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-2">
+          <div>
+            <label class="label">イベント種別</label>
+            <input id="match_event" class="input" placeholder="例: Ranked / Draft" />
+          </div>
+          <div>
+            <label class="label">相手アーキタイプ</label>
+            <input id="match_opponent" class="input" placeholder="例: Mono Red" />
+          </div>
+        </div>
+        <div>
+          <label class="label">メモ</label>
+          <textarea id="match_notes" class="textarea" placeholder="気づき、マリガン、負け筋など"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn" onclick="closeDialog('matchDialog')">キャンセル</button>
+      <button class="btn primary" onclick="saveMatchFromDialog()">追加</button>
+    </div>
+  </dialog>
+
+  <script>
+    const APP_VERSION = '2.1.0';
+    const SCHEMA_VERSION = 2;
+    const STORAGE_KEY = 'arena_stats_store_v2';
+    const LEGACY_SIMPLE_KEY = 'arena_simple_data';
+
+    let state = loadState();
+    let ui = {
+      search: '',
+      boFilter: 'all',
+      eventFilter: '',
+      opponentFilter: '',
+      editingDeckId: null,
+    };
+
+    function newStore() {
+      return {
+        schemaVersion: SCHEMA_VERSION,
+        appVersion: APP_VERSION,
+        selectedDeckId: null,
+        decks: [],
+        settings: {
+          createdAt: new Date().toISOString(),
+          lastMigratedAt: null,
+          backupRecommended: true,
+        }
+      };
+    }
+
+    function uid() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+    }
+
+    function persistState(nextState) {
+      nextState.appVersion = APP_VERSION;
+      nextState.schemaVersion = SCHEMA_VERSION;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      state = nextState;
+      return nextState;
+    }
+
+    function saveState(nextState = state) {
+      return persistState(nextState);
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return migrateLegacyData();
+        const parsed = JSON.parse(raw);
+        return migrateToLatest(parsed);
+      } catch (e) {
+        console.error(e);
+        return migrateLegacyData();
+      }
+    }
+
+    function migrateLegacyData() {
+      const store = newStore();
+      try {
+        const legacyRaw = localStorage.getItem(LEGACY_SIMPLE_KEY);
+        if (!legacyRaw) return store;
+        const legacy = JSON.parse(legacyRaw);
+        const deckId = uid();
+        const deck = {
+          id: deckId,
+          name: legacy?.deck?.name || '旧データ移行デッキ',
+          format: legacy?.deck?.format || 'Standard',
+          archetype: legacy?.deck?.archetype || '',
+          notes: '旧バージョンから自動移行',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          matches: Array.isArray(legacy?.matches) ? legacy.matches.map(m => ({
+            id: uid(),
+            date: m.date || new Date().toISOString(),
+            result: m.result === 'loss' ? 'loss' : 'win',
+            isBo3: !!m.isBo3,
+            eventType: m.eventType || 'Ranked',
+            opponent: m.opponent || '',
+            wentFirst: typeof m.wentFirst === 'boolean' ? m.wentFirst : true,
+            notes: m.notes || '',
+            version: 1,
+          })) : []
+        };
+        store.decks = [deck];
+        store.selectedDeckId = deckId;
+        store.settings.lastMigratedAt = new Date().toISOString();
+        persistState(store);
+        return store;
+      } catch (e) {
+        console.error(e);
+        return store;
+      }
+    }
+
+    function migrateToLatest(store) {
+      const migrated = JSON.parse(JSON.stringify(store || {}));
+      if (!migrated.schemaVersion) migrated.schemaVersion = 1;
+      if (!Array.isArray(migrated.decks)) migrated.decks = [];
+      if (!migrated.settings) migrated.settings = { createdAt: new Date().toISOString(), lastMigratedAt: null, backupRecommended: true };
+
+      if (migrated.schemaVersion < 2) {
+        migrated.decks = migrated.decks.map(deck => ({
+          id: deck.id || uid(),
+          name: deck.name || 'Untitled Deck',
+          format: deck.format || 'Standard',
+          archetype: deck.archetype || '',
+          notes: deck.notes || '',
+          createdAt: deck.createdAt || new Date().toISOString(),
+          updatedAt: deck.updatedAt || new Date().toISOString(),
+          matches: Array.isArray(deck.matches) ? deck.matches.map(m => ({
+            id: m.id || uid(),
+            date: m.date || new Date().toISOString(),
+            result: m.result === 'loss' ? 'loss' : 'win',
+            isBo3: !!m.isBo3,
+            eventType: m.eventType || 'Ranked',
+            opponent: m.opponent || '',
+            wentFirst: typeof m.wentFirst === 'boolean' ? m.wentFirst : true,
+            notes: m.notes || '',
+            version: 1,
+          })) : []
+        }));
+        migrated.schemaVersion = 2;
+        migrated.settings.lastMigratedAt = new Date().toISOString();
+      }
+
+      migrated.appVersion = APP_VERSION;
+      if (!migrated.selectedDeckId && migrated.decks[0]) migrated.selectedDeckId = migrated.decks[0].id;
+      persistState(migrated);
+      return migrated;
+    }
+
+    function getSelectedDeck() {
+      return state.decks.find(d => d.id === state.selectedDeckId) || null;
+    }
+
+    function calcStats(matches) {
+      const wins = matches.filter(m => m.result === 'win').length;
+      const losses = matches.filter(m => m.result === 'loss').length;
+      const total = wins + losses;
+      return { wins, losses, total, rate: total ? wins / total : 0 };
+    }
+
+    function calcGlobalStats() {
+      const allMatches = state.decks.flatMap(deck => Array.isArray(deck.matches) ? deck.matches : []);
+      return calcStats(allMatches);
+    }
+
+    function calcFirstWinRate(matches, firstValue) {
+      return calcStats(matches.filter(m => m.wentFirst === firstValue));
+    }
+
+    function byOpponent(matches) {
+      const map = new Map();
+      for (const m of matches) {
+        const key = (m.opponent || '').trim() || '(Unknown)';
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(m);
+      }
+      return Array.from(map.entries())
+        .map(([name, list]) => ({ name, ...calcStats(list) }))
+        .sort((a, b) => b.total - a.total || b.rate - a.rate);
+    }
+
+    function filteredDecks() {
+      const q = ui.search.trim().toLowerCase();
+      if (!q) return state.decks;
+      return state.decks.filter(d => [d.name, d.format, d.archetype, d.notes].join(' ').toLowerCase().includes(q));
+    }
+
+    function filteredMatches(deck) {
+      return deck.matches.slice().sort((a, b) => b.date.localeCompare(a.date)).filter(m => {
+        const boOk = ui.boFilter === 'all' ? true : ui.boFilter === 'bo1' ? !m.isBo3 : m.isBo3;
+        const eventOk = !ui.eventFilter.trim() || (m.eventType || '').toLowerCase().includes(ui.eventFilter.trim().toLowerCase());
+        const oppOk = !ui.opponentFilter.trim() || (m.opponent || '').toLowerCase().includes(ui.opponentFilter.trim().toLowerCase());
+        return boOk && eventOk && oppOk;
+      });
+    }
+
+    function render() {
+      const selectedDeck = getSelectedDeck();
+      const globalStats = calcGlobalStats();
+      const app = document.getElementById('app');
+      const deckCards = filteredDecks().map(deck => {
+        const s = calcStats(deck.matches);
+        return `
+          <button class="deck-card ${deck.id === state.selectedDeckId ? 'active' : ''}" onclick="selectDeck('${deck.id}')">
+            <div class="deck-top">
+              <div class="deck-name">${escapeHtml(deck.name)}</div>
+              <div class="deck-rate">${Math.round(s.rate * 100)}%</div>
+            </div>
+            <div class="deck-meta">
+              <span>${escapeHtml(deck.archetype || 'Archetype未設定')}</span>
+              <span>•</span>
+              <span>${escapeHtml(deck.format || 'Standard')}</span>
+              <span>•</span>
+              <span>${s.wins}W-${s.losses}L</span>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      app.innerHTML = `
+        <div class="app">
+          <aside class="sidebar">
+            <div class="titlebar">
+              <div>
+                <div class="title">ArenaStats</div>
+                <div class="sub">複数デッキ管理 / データ移行対応</div>
+              </div>
+              <button class="btn primary" onclick="openDeckDialog()">＋ デッキ</button>
+            </div>
+
+            <div class="stack">
+              <div class="global-summary">
+                <div class="label">全デッキ通算勝率</div>
+                <div class="value">${Math.round(globalStats.rate * 100)}%</div>
+                <div class="meta">${globalStats.wins}勝 ${globalStats.losses}敗 / ${globalStats.total}戦</div>
+              </div>
+              <input class="search" placeholder="デッキ検索" value="${escapeAttr(ui.search)}" oninput="setSearch(this.value)" />
+              <div class="actions-row">
+                <button class="btn secondary" onclick="exportFullBackup()">全体バックアップ</button>
+                <label class="btn">
+                  全体復元
+                  <input class="hidden" type="file" accept="application/json,.json" onchange="importFullBackup(event)" />
+                </label>
+              </div>
+              <div class="footer-note">
+                バージョン: ${APP_VERSION} / スキーマ: v${SCHEMA_VERSION}<br>
+                改修時もデータを引き継げるよう、バージョン付き保存と移行処理を実装しています。<br>
+                対戦成績は localStorage に自動保存され、ブラウザ再読み込み後も保持されます。
+              </div>
+              ${state.settings.lastMigratedAt ? `<div class="badge">移行実施: ${formatDate(state.settings.lastMigratedAt)}</div>` : ''}
+            </div>
+
+            <div class="deck-list">
+              ${deckCards || '<div class="muted">まだデッキがありません</div>'}
+            </div>
+          </aside>
+
+          <main class="main">
+            ${selectedDeck ? renderDeckDetail(selectedDeck) : `
+              <div class="empty">
+                <div>
+                  <h2>デッキを追加してください</h2>
+                  <p>複数デッキの勝率管理、CSV入出力、将来バージョンへのデータ移行に対応しています。</p>
+                  <button class="btn primary" onclick="openDeckDialog()">最初のデッキを追加</button>
+                </div>
+              </div>
+            `}
+          </main>
+        </div>
+      `;
+    }
+
+    function renderDeckDetail(deck) {
+      const stats = calcStats(deck.matches);
+      const firstStats = calcFirstWinRate(deck.matches, true);
+      const drawStats = calcFirstWinRate(deck.matches, false);
+      const oppRows = byOpponent(deck.matches).slice(0, 12).map(row => `
+        <div class="trow">
+          <div>${escapeHtml(row.name)}</div>
+          <div>${Math.round(row.rate * 100)}%</div>
+          <div class="muted">${row.wins}W-${row.losses}L</div>
+        </div>
+      `).join('') || '<div class="muted">データがありません</div>';
+
+      const matches = filteredMatches(deck).map(m => `
+        <div class="match">
+          <div class="pill ${m.result === 'win' ? 'win' : 'loss'}">${m.result === 'win' ? 'WIN' : 'LOSS'}</div>
+          <div>
+            <div class="match-title">${escapeHtml(m.eventType || 'Ranked')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
+            <div class="match-meta">
+              <span>相手: ${escapeHtml(m.opponent || 'Unknown')}</span>
+              <span>先手: ${m.wentFirst ? 'Yes' : 'No'}</span>
+              <span>${formatDateTime(m.date)}</span>
+            </div>
+            ${m.notes ? `<div class="notes">${escapeHtml(m.notes)}</div>` : ''}
+          </div>
+          <button class="btn danger" onclick="deleteMatch('${m.id}')">削除</button>
+        </div>
+      `).join('') || '<div class="muted">条件に一致する履歴がありません</div>';
+
+      return `
+        <div class="page-head">
+          <div>
+            <div class="page-title">${escapeHtml(deck.name)}</div>
+            <div class="muted">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')}</div>
+          </div>
+          <div class="toolbar">
+            <button class="btn primary" onclick="openMatchDialog()">＋ 対戦追加</button>
+            <button class="btn" onclick="openDeckDialog('${deck.id}')">デッキ編集</button>
+            <button class="btn" onclick="exportDeckCSV()">CSV書き出し</button>
+            <label class="btn">
+              CSV読込
+              <input class="hidden" type="file" accept=".csv,text/csv,text/plain" onchange="importDeckCSV(event)" />
+            </label>
+            <button class="btn danger" onclick="deleteDeck('${deck.id}')">デッキ削除</button>
+          </div>
+        </div>
+
+        <div class="hero">
+          <section class="card">
+            <h3>デッキ勝率</h3>
+            <div class="big-rate">${Math.round(stats.rate * 100)}%</div>
+            <div class="muted">${stats.wins}勝 ${stats.losses}敗 / 合計 ${stats.total}戦</div>
+            <div class="footer-note">${deck.notes ? escapeHtml(deck.notes) : 'デッキメモ未入力'}</div>
+          </section>
+          <section class="card">
+            <h3>内訳</h3>
+            <div class="stats-grid">
+              <div class="stat-box"><div class="label">総勝利</div><div class="value">${stats.wins}</div></div>
+              <div class="stat-box"><div class="label">総敗北</div><div class="value">${stats.losses}</div></div>
+              <div class="stat-box"><div class="label">先手勝率</div><div class="value">${Math.round(firstStats.rate * 100)}%</div></div>
+              <div class="stat-box"><div class="label">後手勝率</div><div class="value">${Math.round(drawStats.rate * 100)}%</div></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="grid-2">
+          <section class="card">
+            <h3>相手アーキタイプ別勝率</h3>
+            <div class="table">${oppRows}</div>
+          </section>
+          <section class="card">
+            <h3>対戦履歴</h3>
+            <div class="filters">
+              <select class="select" onchange="setBoFilter(this.value)">
+                <option value="all" ${ui.boFilter === 'all' ? 'selected' : ''}>すべて</option>
+                <option value="bo1" ${ui.boFilter === 'bo1' ? 'selected' : ''}>Bo1</option>
+                <option value="bo3" ${ui.boFilter === 'bo3' ? 'selected' : ''}>Bo3</option>
+              </select>
+              <input class="input" placeholder="イベント種別で絞込" value="${escapeAttr(ui.eventFilter)}" oninput="setEventFilter(this.value)" />
+              <input class="input" placeholder="相手アーキタイプで絞込" value="${escapeAttr(ui.opponentFilter)}" oninput="setOpponentFilter(this.value)" />
+            </div>
+            <div class="matches">${matches}</div>
+          </section>
+        </div>
+      `;
+    }
+
+    function selectDeck(id) {
+      state.selectedDeckId = id;
+      saveState(state);
+      render();
+    }
+
+    function setSearch(v) { ui.search = v; render(); }
+    function setBoFilter(v) { ui.boFilter = v; render(); }
+    function setEventFilter(v) { ui.eventFilter = v; render(); }
+    function setOpponentFilter(v) { ui.opponentFilter = v; render(); }
+
+    function openDialog(id) { document.getElementById(id).showModal(); }
+    function closeDialog(id) { document.getElementById(id).close(); }
+
+    function openDeckDialog(deckId = null) {
+      ui.editingDeckId = deckId;
+      const title = document.getElementById('deckDialogTitle');
+      const deck = deckId ? state.decks.find(d => d.id === deckId) : null;
+      title.textContent = deck ? 'デッキ編集' : 'デッキ追加';
+      document.getElementById('deck_name').value = deck?.name || '';
+      document.getElementById('deck_format').value = deck?.format || 'Standard';
+      document.getElementById('deck_archetype').value = deck?.archetype || '';
+      document.getElementById('deck_notes').value = deck?.notes || '';
+      openDialog('deckDialog');
+    }
+
+    function saveDeckFromDialog() {
+      const name = document.getElementById('deck_name').value.trim();
+      const format = document.getElementById('deck_format').value.trim() || 'Standard';
+      const archetype = document.getElementById('deck_archetype').value.trim();
+      const notes = document.getElementById('deck_notes').value.trim();
+      if (!name) { alert('デッキ名を入力してください'); return; }
+
+      if (ui.editingDeckId) {
+        state.decks = state.decks.map(d => d.id === ui.editingDeckId ? { ...d, name, format, archetype, notes, updatedAt: new Date().toISOString() } : d);
+      } else {
+        const id = uid();
+        state.decks.unshift({ id, name, format, archetype, notes, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), matches: [] });
+        state.selectedDeckId = id;
+      }
+      saveState(state);
+      closeDialog('deckDialog');
+      render();
+    }
+
+    function deleteDeck(id) {
+      const deck = state.decks.find(d => d.id === id);
+      if (!deck) return;
+      if (!confirm(`デッキ「${deck.name}」を削除しますか？`)) return;
+      state.decks = state.decks.filter(d => d.id !== id);
+      if (state.selectedDeckId === id) state.selectedDeckId = state.decks[0]?.id || null;
+      saveState(state);
+      render();
+    }
+
+    function openMatchDialog() {
+      const deck = getSelectedDeck();
+      if (!deck) { alert('先にデッキを作成してください'); return; }
+      document.getElementById('match_result').value = 'win';
+      document.getElementById('match_bo').value = 'false';
+      document.getElementById('match_first').value = 'true';
+      document.getElementById('match_event').value = 'Ranked';
+      document.getElementById('match_opponent').value = '';
+      document.getElementById('match_notes').value = '';
+      openDialog('matchDialog');
+    }
+
+    function saveMatchFromDialog() {
+      const deck = getSelectedDeck();
+      if (!deck) return;
+      const match = {
+        id: uid(),
+        date: new Date().toISOString(),
+        result: document.getElementById('match_result').value === 'loss' ? 'loss' : 'win',
+        isBo3: document.getElementById('match_bo').value === 'true',
+        wentFirst: document.getElementById('match_first').value === 'true',
+        eventType: document.getElementById('match_event').value.trim() || 'Ranked',
+        opponent: document.getElementById('match_opponent').value.trim(),
+        notes: document.getElementById('match_notes').value.trim(),
+        version: 1,
+      };
+      deck.matches.unshift(match);
+      deck.updatedAt = new Date().toISOString();
+      saveState(state);
+      closeDialog('matchDialog');
+      render();
+    }
+
+    function deleteMatch(matchId) {
+      const deck = getSelectedDeck();
+      if (!deck) return;
+      if (!confirm('この対戦結果を削除しますか？')) return;
+      deck.matches = deck.matches.filter(m => m.id !== matchId);
+      deck.updatedAt = new Date().toISOString();
+      saveState(state);
+      render();
+    }
+
+    function exportDeckCSV() {
+      const deck = getSelectedDeck();
+      if (!deck) return;
+      const header = 'date,eventType,isBo3,opponent,wentFirst,result,notes';
+      const lines = deck.matches.slice().sort((a,b) => a.date.localeCompare(b.date)).map(m => [m.date, csvEscape(m.eventType), String(!!m.isBo3), csvEscape(m.opponent), String(!!m.wentFirst), m.result, csvEscape(m.notes)].join(','));
+      downloadFile(`${safeFileName(deck.name)}.csv`, [header, ...lines].join('\n'), 'text/csv;charset=utf-8');
+    }
+
+    function importDeckCSV(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const deck = getSelectedDeck();
+      if (!deck) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = String(reader.result || '');
+          const rows = parseCSV(text);
+          const imported = rows.map(r => ({
+            id: uid(),
+            date: r.date || new Date().toISOString(),
+            eventType: r.eventType || 'Ranked',
+            isBo3: ['true','1','yes'].includes(String(r.isBo3).toLowerCase()),
+            opponent: r.opponent || '',
+            wentFirst: ['true','1','yes'].includes(String(r.wentFirst).toLowerCase()),
+            result: String(r.result).toLowerCase() === 'loss' ? 'loss' : 'win',
+            notes: r.notes || '',
+            version: 1,
+          }));
+          deck.matches = [...imported, ...deck.matches];
+          deck.updatedAt = new Date().toISOString();
+          saveState(state);
+          render();
+          alert(`${imported.length}件の対戦結果を取り込みました`);
+        } catch (e) {
+          console.error(e);
+          alert('CSVの取り込みに失敗しました');
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    function exportFullBackup() {
+      const backup = { exportedAt: new Date().toISOString(), appVersion: APP_VERSION, schemaVersion: SCHEMA_VERSION, data: state };
+      downloadFile(`arena_stats_backup_${dateStamp()}.json`, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8');
+    }
+
+    function importFullBackup(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const json = JSON.parse(String(reader.result || '{}'));
+          const incoming = json.data || json;
+          const migrated = migrateToLatest(incoming);
+          saveState(migrated);
+          render();
+          alert('バックアップを復元しました');
+        } catch (e) {
+          console.error(e);
+          alert('JSON復元に失敗しました');
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    function parseCSV(text) {
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (!lines.length) return [];
+      const first = splitCSVLine(lines[0]).map(v => v.trim());
+      const hasHeader = first.includes('eventType') || first.includes('date');
+      const headers = hasHeader ? first : ['date','eventType','isBo3','opponent','wentFirst','result','notes'];
+      const body = hasHeader ? lines.slice(1) : lines;
+      return body.map(line => {
+        const cols = splitCSVLine(line);
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = cols[i] || '');
+        return obj;
+      });
+    }
+
+    function splitCSVLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+        if (c === ',' && !inQuotes) {
+          result.push(current);
+          current = '';
+          continue;
+        }
+        current += c;
+      }
+      result.push(current);
+      return result;
+    }
+
+    function csvEscape(v) {
+      const s = String(v || '').replace(/\r?\n/g, ' ');
+      return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function downloadFile(filename, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function safeFileName(name) {
+      return String(name || 'deck').replace(/[\\/:*?"<>|\s]+/g, '_');
+    }
+
+    function dateStamp() {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    }
+
+    function formatDate(iso) { return new Date(iso).toLocaleDateString('ja-JP'); }
+    function formatDateTime(iso) { return new Date(iso).toLocaleString('ja-JP'); }
+
+    function escapeHtml(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeAttr(s) { return escapeHtml(s).replace(/`/g, '&#096;'); }
+
+    window.addEventListener('beforeunload', () => {
+      try { persistState(state); } catch (e) { console.error(e); }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        try { persistState(state); } catch (e) { console.error(e); }
+      }
+    });
+
+    window.addEventListener('storage', (event) => {
+      if (event.key === STORAGE_KEY && event.newValue) {
+        try {
+          state = migrateToLatest(JSON.parse(event.newValue));
+          render();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
