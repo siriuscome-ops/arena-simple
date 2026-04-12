@@ -8,55 +8,282 @@
 </head>
 <body>
 <script>
-// ★重要修正版（再読み込みで消えない＋全体勝率）
-const STORAGE_KEY = 'arena_stats_store_v2';
+const STORAGE_KEY = 'arena_stats_stable_v1';
 
-function saveState(data){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+function saveState(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('save failed', e);
+  }
 }
 
-function loadState(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : { decks: [] };
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return {
+        selectedDeckId: null,
+        decks: []
+      };
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.decks)) {
+      return { selectedDeckId: null, decks: [] };
+    }
+    return parsed;
+  } catch (e) {
+    console.error('load failed', e);
+    return { selectedDeckId: null, decks: [] };
+  }
 }
 
 let state = loadState();
 
-function calcGlobal(){
-  let wins=0,losses=0;
-  state.decks.forEach(d=>{
-    d.matches.forEach(m=>{
-      if(m.result==='win') wins++; else losses++;
-    });
-  });
-  const total=wins+losses;
-  return {wins,losses,total,rate: total?Math.round((wins/total)*100):0};
+function uid() {
+  return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 
-function addMatch(){
-  if(!state.decks.length){
-    state.decks.push({name:'デッキ',matches:[]});
+function getSelectedDeck() {
+  return state.decks.find(d => d.id === state.selectedDeckId) || null;
+}
+
+function calcStats(matches) {
+  const wins = matches.filter(m => m.result === 'win').length;
+  const losses = matches.filter(m => m.result === 'loss').length;
+  const total = wins + losses;
+  return {
+    wins,
+    losses,
+    total,
+    rate: total ? Math.round((wins / total) * 100) : 0,
+  };
+}
+
+function calcGlobal() {
+  const allMatches = state.decks.flatMap(d => Array.isArray(d.matches) ? d.matches : []);
+  return calcStats(allMatches);
+}
+
+function ensureState() {
+  if (!state.selectedDeckId && state.decks[0]) {
+    state.selectedDeckId = state.decks[0].id;
   }
-  state.decks[0].matches.push({result:Math.random()>0.5?'win':'loss'});
+}
+
+function persistAndRender() {
+  ensureState();
   saveState(state);
   render();
 }
 
-function render(){
-  const g=calcGlobal();
-  document.body.innerHTML=`
-    <h1>ArenaStats</h1>
-    <h2>全体勝率 ${g.rate}%</h2>
-    <p>${g.wins}勝 ${g.losses}敗 (${g.total}戦)</p>
-    <button onclick="addMatch()">試合追加</button>
+function addDeck() {
+  const name = prompt('デッキ名を入力してください');
+  if (!name || !name.trim()) return;
+  const format = prompt('フォーマットを入力してください', 'Standard') || 'Standard';
+  const archetype = prompt('アーキタイプを入力してください', '') || '';
+
+  const deck = {
+    id: uid(),
+    name: name.trim(),
+    format: format.trim() || 'Standard',
+    archetype: archetype.trim(),
+    matches: []
+  };
+
+  state.decks.unshift(deck);
+  state.selectedDeckId = deck.id;
+  persistAndRender();
+}
+
+function selectDeck(id) {
+  state.selectedDeckId = id;
+  persistAndRender();
+}
+
+function renameDeck() {
+  const deck = getSelectedDeck();
+  if (!deck) return;
+  const name = prompt('新しいデッキ名', deck.name);
+  if (!name || !name.trim()) return;
+  const format = prompt('フォーマット', deck.format || 'Standard');
+  const archetype = prompt('アーキタイプ', deck.archetype || '');
+  deck.name = name.trim();
+  deck.format = (format || 'Standard').trim();
+  deck.archetype = (archetype || '').trim();
+  persistAndRender();
+}
+
+function deleteDeck() {
+  const deck = getSelectedDeck();
+  if (!deck) return;
+  if (!confirm('デッキ「' + deck.name + '」を削除しますか？')) return;
+  state.decks = state.decks.filter(d => d.id !== deck.id);
+  state.selectedDeckId = state.decks[0] ? state.decks[0].id : null;
+  persistAndRender();
+}
+
+function addMatch() {
+  const deck = getSelectedDeck();
+  if (!deck) {
+    alert('先にデッキを追加してください');
+    return;
+  }
+
+  const result = (prompt('結果を入力してください: win / loss', 'win') || 'win').toLowerCase() === 'loss' ? 'loss' : 'win';
+  const eventType = prompt('イベント種別', 'Ranked') || 'Ranked';
+  const isBo3 = (prompt('Bo3ですか？ true / false', 'false') || 'false').toLowerCase() === 'true';
+  const opponent = prompt('相手アーキタイプ', '') || '';
+  const wentFirst = (prompt('先手ですか？ true / false', 'true') || 'true').toLowerCase() === 'true';
+  const notes = prompt('メモ', '') || '';
+
+  deck.matches.unshift({
+    id: uid(),
+    date: new Date().toISOString(),
+    result,
+    eventType: eventType.trim() || 'Ranked',
+    isBo3,
+    opponent: opponent.trim(),
+    wentFirst,
+    notes: notes.trim()
+  });
+
+  persistAndRender();
+}
+
+function deleteMatch(id) {
+  const deck = getSelectedDeck();
+  if (!deck) return;
+  if (!confirm('この対戦結果を削除しますか？')) return;
+  deck.matches = deck.matches.filter(m => m.id !== id);
+  persistAndRender();
+}
+
+function renderDeckList() {
+  return state.decks.map(deck => {
+    const s = calcStats(deck.matches);
+    return `
+      <button onclick="selectDeck('${deck.id}')" style="width:100%;text-align:left;padding:12px;border-radius:12px;border:1px solid #333;background:${deck.id === state.selectedDeckId ? '#1d2f5f' : '#15151d'};color:white;margin-bottom:10px;cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+          <strong>${escapeHtml(deck.name)}</strong>
+          <strong>${s.rate}%</strong>
+        </div>
+        <div style="font-size:12px;color:#aaa;margin-top:6px;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')} • ${s.wins}勝 ${s.losses}敗</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderMatches(deck) {
+  if (!deck.matches.length) {
+    return '<div style="color:#aaa;">まだ対戦履歴がありません</div>';
+  }
+
+  return deck.matches.map(m => `
+    <div style="border:1px solid #333;border-radius:12px;padding:12px;background:#101018;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+      <div>
+        <div style="font-weight:bold;color:${m.result === 'win' ? '#7CFC98' : '#FF8E8E'};">${m.result.toUpperCase()}</div>
+        <div>${escapeHtml(m.eventType || 'Ranked')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
+        <div style="font-size:12px;color:#aaa;">相手: ${escapeHtml(m.opponent || 'Unknown')} / ${m.wentFirst ? '先手' : '後手'}</div>
+        <div style="font-size:12px;color:#aaa;">${new Date(m.date).toLocaleString()}</div>
+        ${m.notes ? `<div style="font-size:12px;color:#ddd;margin-top:4px;">${escapeHtml(m.notes)}</div>` : ''}
+      </div>
+      <button onclick="deleteMatch('${m.id}')" style="background:#8b2f2f;border:none;color:white;padding:8px 10px;border-radius:10px;cursor:pointer;">削除</button>
+    </div>
+  `).join('');
+}
+
+function render() {
+  ensureState();
+  const global = calcGlobal();
+  const deck = getSelectedDeck();
+  const deckStats = deck ? calcStats(deck.matches) : { wins: 0, losses: 0, total: 0, rate: 0 };
+
+  document.body.innerHTML = `
+    <div style="display:grid;grid-template-columns:320px 1fr;min-height:100vh;">
+      <aside style="padding:16px;border-right:1px solid #262634;background:#0f0f15;">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+          <div>
+            <div style="font-size:24px;font-weight:900;">ArenaStats</div>
+            <div style="font-size:12px;color:#aaa;">安定版 / 複数デッキ対応</div>
+          </div>
+          <button onclick="addDeck()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ デッキ</button>
+        </div>
+
+        <div style="margin-top:14px;padding:12px;border:1px solid #314261;background:#121a28;border-radius:14px;">
+          <div style="font-size:12px;color:#aecaFF;">全デッキ通算勝率</div>
+          <div style="font-size:30px;font-weight:900;margin-top:4px;">${global.rate}%</div>
+          <div style="font-size:12px;color:#aaa;">${global.wins}勝 ${global.losses}敗 / ${global.total}戦</div>
+        </div>
+
+        <div style="margin-top:14px;">
+          ${renderDeckList() || '<div style="color:#aaa;">まだデッキがありません</div>'}
+        </div>
+      </aside>
+
+      <main style="padding:16px;">
+        ${deck ? `
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:28px;font-weight:900;">${escapeHtml(deck.name)}</div>
+              <div style="font-size:13px;color:#aaa;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')}</div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button onclick="addMatch()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ 対戦追加</button>
+              <button onclick="renameDeck()" style="background:#1a1a24;border:1px solid #333;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;">デッキ編集</button>
+              <button onclick="deleteDeck()" style="background:#2b1717;border:1px solid #5c2f2f;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;">デッキ削除</button>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+            <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;">
+              <h3 style="margin:0 0 12px;">デッキ勝率</h3>
+              <div style="font-size:48px;font-weight:1000;line-height:1;">${deckStats.rate}%</div>
+              <div style="color:#aaa;margin-top:6px;">${deckStats.wins}勝 ${deckStats.losses}敗 / ${deckStats.total}戦</div>
+            </section>
+            <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;">
+              <h3 style="margin:0 0 12px;">内訳</h3>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:#101018;border:1px solid #333;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#aaa;">総勝利</div><div style="font-size:24px;font-weight:900;">${deckStats.wins}</div></div>
+                <div style="background:#101018;border:1px solid #333;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#aaa;">総敗北</div><div style="font-size:24px;font-weight:900;">${deckStats.losses}</div></div>
+              </div>
+            </section>
+          </div>
+
+          <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;margin-top:14px;">
+            <h3 style="margin:0 0 12px;">対戦履歴</h3>
+            ${renderMatches(deck)}
+          </section>
+        ` : `
+          <div style="display:grid;place-items:center;min-height:70vh;color:#aaa;text-align:center;">
+            <div>
+              <h2>デッキを追加してください</h2>
+              <p>複数デッキを管理でき、再読み込み後もデータは保持されます。</p>
+              <button onclick="addDeck()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">最初のデッキを追加</button>
+            </div>
+          </div>
+        `}
+      </main>
+    </div>
   `;
 }
 
-window.addEventListener('beforeunload',()=>saveState(state));
-document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden') saveState(state);
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+window.addEventListener('beforeunload', () => saveState(state));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveState(state);
 });
 
+ensureState();
+saveState(state);
 render();
 </script>
 </body>
