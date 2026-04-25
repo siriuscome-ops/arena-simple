@@ -8,7 +8,8 @@
 </head>
 <body>
 <script>
-const STORAGE_KEY = 'arena_stats_stable_v1';
+const STORAGE_KEY = 'arena_stats_stable_v2';
+const OLD_STORAGE_KEY = 'arena_stats_stable_v1';
 
 function saveState(data) {
   try {
@@ -20,17 +21,11 @@ function saveState(data) {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return {
-        selectedDeckId: null,
-        decks: []
-      };
-    }
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(OLD_STORAGE_KEY);
+    if (!raw) return { selectedDeckId: null, decks: [] };
     const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.decks)) {
-      return { selectedDeckId: null, decks: [] };
-    }
+    if (!parsed || !Array.isArray(parsed.decks)) return { selectedDeckId: null, decks: [] };
+    saveState(parsed);
     return parsed;
   } catch (e) {
     console.error('load failed', e);
@@ -52,12 +47,7 @@ function calcStats(matches) {
   const wins = matches.filter(m => m.result === 'win').length;
   const losses = matches.filter(m => m.result === 'loss').length;
   const total = wins + losses;
-  return {
-    wins,
-    losses,
-    total,
-    rate: total ? Math.round((wins / total) * 100) : 0,
-  };
+  return { wins, losses, total, rate: total ? Math.round((wins / total) * 100) : 0 };
 }
 
 function calcGlobal() {
@@ -66,9 +56,7 @@ function calcGlobal() {
 }
 
 function ensureState() {
-  if (!state.selectedDeckId && state.decks[0]) {
-    state.selectedDeckId = state.decks[0].id;
-  }
+  if (!state.selectedDeckId && state.decks[0]) state.selectedDeckId = state.decks[0].id;
 }
 
 function persistAndRender() {
@@ -82,15 +70,7 @@ function addDeck() {
   if (!name || !name.trim()) return;
   const format = prompt('フォーマットを入力してください', 'Standard') || 'Standard';
   const archetype = prompt('アーキタイプを入力してください', '') || '';
-
-  const deck = {
-    id: uid(),
-    name: name.trim(),
-    format: format.trim() || 'Standard',
-    archetype: archetype.trim(),
-    matches: []
-  };
-
+  const deck = { id: uid(), name: name.trim(), format: format.trim() || 'Standard', archetype: archetype.trim(), matches: [] };
   state.decks.unshift(deck);
   state.selectedDeckId = deck.id;
   persistAndRender();
@@ -129,25 +109,76 @@ function addMatch() {
     alert('先にデッキを追加してください');
     return;
   }
+  openMatchForm();
+}
 
-  const result = (prompt('結果を入力してください: win / loss', 'win') || 'win').toLowerCase() === 'loss' ? 'loss' : 'win';
-  const eventType = prompt('イベント種別', 'Ranked') || 'Ranked';
-  const isBo3 = (prompt('Bo3ですか？ true / false', 'false') || 'false').toLowerCase() === 'true';
-  const opponent = prompt('相手アーキタイプ', '') || '';
-  const wentFirst = (prompt('先手ですか？ true / false', 'true') || 'true').toLowerCase() === 'true';
-  const notes = prompt('メモ', '') || '';
+function openMatchForm() {
+  const modal = document.createElement('div');
+  modal.id = 'matchModal';
+  modal.style.position = 'fixed';
+  modal.style.inset = '0';
+  modal.style.background = 'rgba(0,0,0,.72)';
+  modal.style.display = 'grid';
+  modal.style.placeItems = 'center';
+  modal.style.zIndex = '9999';
+  modal.innerHTML = `
+    <div style="width:min(520px,calc(100vw - 24px));background:#ffffff;color:#111827;border-radius:18px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.45);">
+      <h2 style="margin:0 0 14px;color:#111827;">対戦結果を追加</h2>
+      <label style="font-size:13px;font-weight:bold;color:#374151;">結果</label>
+      <select id="form_result" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;">
+        <option value="win">勝ち / Win</option>
+        <option value="loss">負け / Loss</option>
+      </select>
 
+      <label style="font-size:13px;font-weight:bold;color:#374151;">イベント種別</label>
+      <input id="form_event" value="Ranked" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;" />
+
+      <label style="font-size:13px;font-weight:bold;color:#374151;">Bo形式</label>
+      <select id="form_bo" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;">
+        <option value="false">Bo1</option>
+        <option value="true">Bo3</option>
+      </select>
+
+      <label style="font-size:13px;font-weight:bold;color:#374151;">相手アーキタイプ</label>
+      <input id="form_opponent" placeholder="例: Mono Red" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;" />
+
+      <label style="font-size:13px;font-weight:bold;color:#374151;">先手/後手</label>
+      <select id="form_first" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;">
+        <option value="true">先手</option>
+        <option value="false">後手</option>
+      </select>
+
+      <label style="font-size:13px;font-weight:bold;color:#374151;">メモ</label>
+      <textarea id="form_notes" placeholder="任意" style="width:100%;min-height:80px;margin:6px 0 16px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;"></textarea>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeMatchForm()" style="background:#e5e7eb;color:#111827;border:none;padding:10px 14px;border-radius:12px;font-weight:bold;">キャンセル</button>
+        <button onclick="saveMatchFromForm()" style="background:#2563eb;color:#fff;border:none;padding:10px 14px;border-radius:12px;font-weight:bold;">追加</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function closeMatchForm() {
+  const modal = document.getElementById('matchModal');
+  if (modal) modal.remove();
+}
+
+function saveMatchFromForm() {
+  const deck = getSelectedDeck();
+  if (!deck) return;
   deck.matches.unshift({
     id: uid(),
     date: new Date().toISOString(),
-    result,
-    eventType: eventType.trim() || 'Ranked',
-    isBo3,
-    opponent: opponent.trim(),
-    wentFirst,
-    notes: notes.trim()
+    result: document.getElementById('form_result').value,
+    eventType: document.getElementById('form_event').value.trim() || 'Ranked',
+    isBo3: document.getElementById('form_bo').value === 'true',
+    opponent: document.getElementById('form_opponent').value.trim(),
+    wentFirst: document.getElementById('form_first').value === 'true',
+    notes: document.getElementById('form_notes').value.trim()
   });
-
+  closeMatchForm();
   persistAndRender();
 }
 
@@ -162,33 +193,31 @@ function deleteMatch(id) {
 function renderDeckList() {
   return state.decks.map(deck => {
     const s = calcStats(deck.matches);
+    const active = deck.id === state.selectedDeckId;
     return `
-      <button onclick="selectDeck('${deck.id}')" style="width:100%;text-align:left;padding:12px;border-radius:12px;border:1px solid #333;background:${deck.id === state.selectedDeckId ? '#1d2f5f' : '#15151d'};color:white;margin-bottom:10px;cursor:pointer;">
+      <button onclick="selectDeck('${deck.id}')" style="width:100%;text-align:left;padding:12px;border-radius:14px;border:1px solid ${active ? '#93c5fd' : '#475569'};background:${active ? '#1d4ed8' : '#1e293b'};color:#ffffff;margin-bottom:10px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.22);">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-          <strong>${escapeHtml(deck.name)}</strong>
-          <strong>${s.rate}%</strong>
+          <strong style="color:#ffffff;">${escapeHtml(deck.name)}</strong>
+          <strong style="color:#ffffff;font-size:18px;">${s.rate}%</strong>
         </div>
-        <div style="font-size:12px;color:#aaa;margin-top:6px;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')} • ${s.wins}勝 ${s.losses}敗</div>
+        <div style="font-size:12px;color:#e5e7eb;margin-top:6px;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')} • ${s.wins}勝 ${s.losses}敗</div>
       </button>
     `;
   }).join('');
 }
 
 function renderMatches(deck) {
-  if (!deck.matches.length) {
-    return '<div style="color:#aaa;">まだ対戦履歴がありません</div>';
-  }
-
+  if (!deck.matches.length) return '<div style="color:#ffffff;background:#334155;padding:12px;border-radius:12px;">まだ対戦履歴がありません</div>';
   return deck.matches.map(m => `
-    <div style="border:1px solid #333;border-radius:12px;padding:12px;background:#101018;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+    <div style="border:1px solid #475569;border-radius:14px;padding:12px;background:#1e293b;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;color:#ffffff;">
       <div>
-        <div style="font-weight:bold;color:${m.result === 'win' ? '#7CFC98' : '#FF8E8E'};">${m.result.toUpperCase()}</div>
-        <div>${escapeHtml(m.eventType || 'Ranked')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
-        <div style="font-size:12px;color:#aaa;">相手: ${escapeHtml(m.opponent || 'Unknown')} / ${m.wentFirst ? '先手' : '後手'}</div>
-        <div style="font-size:12px;color:#aaa;">${new Date(m.date).toLocaleString()}</div>
-        ${m.notes ? `<div style="font-size:12px;color:#ddd;margin-top:4px;">${escapeHtml(m.notes)}</div>` : ''}
+        <div style="font-weight:900;color:${m.result === 'win' ? '#86efac' : '#fca5a5'};">${m.result === 'win' ? 'WIN' : 'LOSS'}</div>
+        <div style="color:#ffffff;">${escapeHtml(m.eventType || 'Ranked')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
+        <div style="font-size:12px;color:#e5e7eb;">相手: ${escapeHtml(m.opponent || 'Unknown')} / ${m.wentFirst ? '先手' : '後手'}</div>
+        <div style="font-size:12px;color:#e5e7eb;">${new Date(m.date).toLocaleString()}</div>
+        ${m.notes ? `<div style="font-size:12px;color:#ffffff;margin-top:4px;">${escapeHtml(m.notes)}</div>` : ''}
       </div>
-      <button onclick="deleteMatch('${m.id}')" style="background:#8b2f2f;border:none;color:white;padding:8px 10px;border-radius:10px;cursor:pointer;">削除</button>
+      <button onclick="deleteMatch('${m.id}')" style="background:#dc2626;border:none;color:white;padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:bold;">削除</button>
     </div>
   `).join('');
 }
@@ -200,66 +229,66 @@ function render() {
   const deckStats = deck ? calcStats(deck.matches) : { wins: 0, losses: 0, total: 0, rate: 0 };
 
   document.body.innerHTML = `
-    <div style="display:grid;grid-template-columns:320px 1fr;min-height:100vh;">
-      <aside style="padding:16px;border-right:1px solid #262634;background:#0f0f15;">
+    <div style="display:grid;grid-template-columns:320px 1fr;min-height:100vh;background:#0f172a;color:#ffffff;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <aside style="padding:16px;border-right:1px solid #334155;background:#111827;color:#ffffff;">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
           <div>
-            <div style="font-size:24px;font-weight:900;">ArenaStats</div>
-            <div style="font-size:12px;color:#aaa;">安定版 / 複数デッキ対応</div>
+            <div style="font-size:24px;font-weight:900;color:#ffffff;">ArenaStats</div>
+            <div style="font-size:12px;color:#e5e7eb;">安定版 / 複数デッキ対応</div>
           </div>
-          <button onclick="addDeck()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ デッキ</button>
+          <button onclick="addDeck()" style="background:#2563eb;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ デッキ</button>
         </div>
 
-        <div style="margin-top:14px;padding:12px;border:1px solid #314261;background:#121a28;border-radius:14px;">
-          <div style="font-size:12px;color:#aecaFF;">全デッキ通算勝率</div>
-          <div style="font-size:30px;font-weight:900;margin-top:4px;">${global.rate}%</div>
-          <div style="font-size:12px;color:#aaa;">${global.wins}勝 ${global.losses}敗 / ${global.total}戦</div>
+        <div style="margin-top:14px;padding:14px;border:1px solid #93c5fd;background:#1d4ed8;border-radius:14px;color:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.28);">
+          <div style="font-size:13px;color:#dbeafe;font-weight:bold;">全デッキ通算勝率</div>
+          <div style="font-size:34px;font-weight:1000;margin-top:4px;color:#ffffff;">${global.rate}%</div>
+          <div style="font-size:13px;color:#ffffff;">${global.wins}勝 ${global.losses}敗 / ${global.total}戦</div>
         </div>
 
         <div style="margin-top:14px;">
-          ${renderDeckList() || '<div style="color:#aaa;">まだデッキがありません</div>'}
+          ${renderDeckList() || '<div style="color:#ffffff;background:#334155;padding:12px;border-radius:12px;">まだデッキがありません</div>'}
         </div>
       </aside>
 
-      <main style="padding:16px;">
+      <main style="padding:16px;background:#0f172a;color:#ffffff;">
         ${deck ? `
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">
             <div>
-              <div style="font-size:28px;font-weight:900;">${escapeHtml(deck.name)}</div>
-              <div style="font-size:13px;color:#aaa;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')}</div>
+              <div style="font-size:28px;font-weight:900;color:#ffffff;">${escapeHtml(deck.name)}</div>
+              <div style="font-size:13px;color:#e5e7eb;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')}</div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button onclick="addMatch()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ 対戦追加</button>
-              <button onclick="renameDeck()" style="background:#1a1a24;border:1px solid #333;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;">デッキ編集</button>
-              <button onclick="deleteDeck()" style="background:#2b1717;border:1px solid #5c2f2f;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;">デッキ削除</button>
+              <button onclick="addMatch()" style="background:#2563eb;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ 対戦追加</button>
+              <button onclick="renameDeck()" style="background:#334155;border:1px solid #64748b;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;font-weight:bold;">デッキ編集</button>
+              <button onclick="deleteDeck()" style="background:#991b1b;border:1px solid #ef4444;color:white;padding:10px 12px;border-radius:12px;cursor:pointer;font-weight:bold;">デッキ削除</button>
             </div>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
-            <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;">
-              <h3 style="margin:0 0 12px;">デッキ勝率</h3>
-              <div style="font-size:48px;font-weight:1000;line-height:1;">${deckStats.rate}%</div>
-              <div style="color:#aaa;margin-top:6px;">${deckStats.wins}勝 ${deckStats.losses}敗 / ${deckStats.total}戦</div>
+            <section style="border:1px solid #60a5fa;background:#1d4ed8;border-radius:18px;padding:16px;color:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.28);">
+              <h3 style="margin:0 0 12px;color:#ffffff;">デッキ勝率</h3>
+              <div style="font-size:48px;font-weight:1000;line-height:1;color:#ffffff;">${deckStats.rate}%</div>
+              <div style="color:#ffffff;margin-top:6px;">${deckStats.wins}勝 ${deckStats.losses}敗 / ${deckStats.total}戦</div>
             </section>
-            <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;">
-              <h3 style="margin:0 0 12px;">内訳</h3>
+            <section style="border:1px solid #475569;background:#1e293b;border-radius:18px;padding:16px;color:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.28);">
+              <h3 style="margin:0 0 12px;color:#ffffff;">内訳</h3>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div style="background:#101018;border:1px solid #333;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#aaa;">総勝利</div><div style="font-size:24px;font-weight:900;">${deckStats.wins}</div></div>
-                <div style="background:#101018;border:1px solid #333;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#aaa;">総敗北</div><div style="font-size:24px;font-weight:900;">${deckStats.losses}</div></div>
+                <div style="background:#334155;border:1px solid #64748b;border-radius:12px;padding:12px;color:#ffffff;"><div style="font-size:12px;color:#e5e7eb;">総勝利</div><div style="font-size:24px;font-weight:900;color:#ffffff;">${deckStats.wins}</div></div>
+                <div style="background:#334155;border:1px solid #64748b;border-radius:12px;padding:12px;color:#ffffff;"><div style="font-size:12px;color:#e5e7eb;">総敗北</div><div style="font-size:24px;font-weight:900;color:#ffffff;">${deckStats.losses}</div></div>
               </div>
             </section>
           </div>
 
-          <section style="border:1px solid #262634;background:#14141c;border-radius:18px;padding:16px;margin-top:14px;">
-            <h3 style="margin:0 0 12px;">対戦履歴</h3>
+          <section style="border:1px solid #475569;background:#1e293b;border-radius:18px;padding:16px;margin-top:14px;color:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.28);">
+            <h3 style="margin:0 0 12px;color:#ffffff;">対戦履歴</h3>
             ${renderMatches(deck)}
           </section>
         ` : `
-          <div style="display:grid;place-items:center;min-height:70vh;color:#aaa;text-align:center;">
-            <div>
-              <h2>デッキを追加してください</h2>
-              <p>複数デッキを管理でき、再読み込み後もデータは保持されます。</p>
-              <button onclick="addDeck()" style="background:#5b8cff;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">最初のデッキを追加</button>
+          <div style="display:grid;place-items:center;min-height:70vh;color:#ffffff;text-align:center;">
+            <div style="background:#1e293b;border:1px solid #475569;border-radius:18px;padding:24px;color:#ffffff;">
+              <h2 style="color:#ffffff;">デッキを追加してください</h2>
+              <p style="color:#e5e7eb;">複数デッキを管理でき、再読み込み後もデータは保持されます。</p>
+              <button onclick="addDeck()" style="background:#2563eb;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">最初のデッキを追加</button>
             </div>
           </div>
         `}
