@@ -8,8 +8,9 @@
 </head>
 <body>
 <script>
-const STORAGE_KEY = 'arena_stats_stable_v2';
-const OLD_STORAGE_KEY = 'arena_stats_stable_v1';
+const STORAGE_KEY = 'arena_stats_stable_v3';
+const OLD_STORAGE_KEYS = ['arena_stats_stable_v2', 'arena_stats_stable_v1'];
+const RANK_FORMATS = ['スタンダード', 'アルケミー', 'ヒストリック', 'パイオニア', 'タイムレス'];
 
 function saveState(data) {
   try {
@@ -21,10 +22,22 @@ function saveState(data) {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(OLD_STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      for (const key of OLD_STORAGE_KEYS) {
+        raw = localStorage.getItem(key);
+        if (raw) break;
+      }
+    }
     if (!raw) return { selectedDeckId: null, decks: [] };
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.decks)) return { selectedDeckId: null, decks: [] };
+    parsed.decks.forEach(deck => {
+      if (!Array.isArray(deck.matches)) deck.matches = [];
+      deck.matches.forEach(match => {
+        if (!match.rankFormat) match.rankFormat = normalizeRankFormat(deck.format);
+      });
+    });
     saveState(parsed);
     return parsed;
   } catch (e) {
@@ -37,6 +50,17 @@ let state = loadState();
 
 function uid() {
   return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+function normalizeRankFormat(value) {
+  if (!value) return '未設定';
+  const v = String(value).trim().toLowerCase();
+  if (v.includes('standard') || v.includes('スタンダード')) return 'スタンダード';
+  if (v.includes('alchemy') || v.includes('アルケミー')) return 'アルケミー';
+  if (v.includes('historic') || v.includes('ヒストリック')) return 'ヒストリック';
+  if (v.includes('pioneer') || v.includes('パイオニア') || v.includes('explorer') || v.includes('エクスプローラー')) return 'パイオニア';
+  if (v.includes('timeless') || v.includes('タイムレス')) return 'タイムレス';
+  return '未設定';
 }
 
 function getSelectedDeck() {
@@ -55,6 +79,17 @@ function calcGlobal() {
   return calcStats(allMatches);
 }
 
+function calcByRankFormat(matches) {
+  const rows = [];
+  for (const format of RANK_FORMATS) {
+    const list = matches.filter(m => (m.rankFormat || '未設定') === format);
+    rows.push({ format, ...calcStats(list) });
+  }
+  const unset = matches.filter(m => !RANK_FORMATS.includes(m.rankFormat || '未設定'));
+  if (unset.length) rows.push({ format: '未設定', ...calcStats(unset) });
+  return rows;
+}
+
 function ensureState() {
   if (!state.selectedDeckId && state.decks[0]) state.selectedDeckId = state.decks[0].id;
 }
@@ -68,9 +103,9 @@ function persistAndRender() {
 function addDeck() {
   const name = prompt('デッキ名を入力してください');
   if (!name || !name.trim()) return;
-  const format = prompt('フォーマットを入力してください', 'Standard') || 'Standard';
+  const format = prompt('フォーマットを入力してください', 'スタンダード') || 'スタンダード';
   const archetype = prompt('アーキタイプを入力してください', '') || '';
-  const deck = { id: uid(), name: name.trim(), format: format.trim() || 'Standard', archetype: archetype.trim(), matches: [] };
+  const deck = { id: uid(), name: name.trim(), format: normalizeRankFormat(format), archetype: archetype.trim(), matches: [] };
   state.decks.unshift(deck);
   state.selectedDeckId = deck.id;
   persistAndRender();
@@ -86,10 +121,10 @@ function renameDeck() {
   if (!deck) return;
   const name = prompt('新しいデッキ名', deck.name);
   if (!name || !name.trim()) return;
-  const format = prompt('フォーマット', deck.format || 'Standard');
+  const format = prompt('フォーマット', deck.format || 'スタンダード');
   const archetype = prompt('アーキタイプ', deck.archetype || '');
   deck.name = name.trim();
-  deck.format = (format || 'Standard').trim();
+  deck.format = normalizeRankFormat(format || 'スタンダード');
   deck.archetype = (archetype || '').trim();
   persistAndRender();
 }
@@ -113,6 +148,9 @@ function addMatch() {
 }
 
 function openMatchForm() {
+  const deck = getSelectedDeck();
+  const defaultFormat = deck ? normalizeRankFormat(deck.format) : 'スタンダード';
+  const options = RANK_FORMATS.map(f => `<option value="${f}" ${f === defaultFormat ? 'selected' : ''}>${f}</option>`).join('');
   const modal = document.createElement('div');
   modal.id = 'matchModal';
   modal.style.position = 'fixed';
@@ -130,8 +168,10 @@ function openMatchForm() {
         <option value="loss">負け / Loss</option>
       </select>
 
-      <label style="font-size:13px;font-weight:bold;color:#374151;">イベント種別</label>
-      <input id="form_event" value="Ranked" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;" />
+      <label style="font-size:13px;font-weight:bold;color:#374151;">ランク戦フォーマット</label>
+      <select id="form_rank_format" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;">
+        ${options}
+      </select>
 
       <label style="font-size:13px;font-weight:bold;color:#374151;">Bo形式</label>
       <select id="form_bo" style="width:100%;margin:6px 0 12px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#111827;">
@@ -168,11 +208,13 @@ function closeMatchForm() {
 function saveMatchFromForm() {
   const deck = getSelectedDeck();
   if (!deck) return;
+  const rankFormat = document.getElementById('form_rank_format').value;
   deck.matches.unshift({
     id: uid(),
     date: new Date().toISOString(),
     result: document.getElementById('form_result').value,
-    eventType: document.getElementById('form_event').value.trim() || 'Ranked',
+    rankFormat,
+    eventType: rankFormat,
     isBo3: document.getElementById('form_bo').value === 'true',
     opponent: document.getElementById('form_opponent').value.trim(),
     wentFirst: document.getElementById('form_first').value === 'true',
@@ -190,6 +232,21 @@ function deleteMatch(id) {
   persistAndRender();
 }
 
+function renderRankBreakdown(matches) {
+  const rows = calcByRankFormat(matches);
+  return `
+    <div style="display:grid;gap:8px;margin-top:10px;">
+      ${rows.map(r => `
+        <div style="display:grid;grid-template-columns:1fr 72px 96px;gap:8px;align-items:center;background:#0f172a;border:1px solid #475569;border-radius:10px;padding:8px;color:#ffffff;">
+          <div style="font-weight:bold;color:#ffffff;">${escapeHtml(r.format)}</div>
+          <div style="font-weight:900;color:#ffffff;text-align:right;">${r.rate}%</div>
+          <div style="font-size:12px;color:#e5e7eb;text-align:right;">${r.wins}勝${r.losses}敗</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function renderDeckList() {
   return state.decks.map(deck => {
     const s = calcStats(deck.matches);
@@ -200,7 +257,7 @@ function renderDeckList() {
           <strong style="color:#ffffff;">${escapeHtml(deck.name)}</strong>
           <strong style="color:#ffffff;font-size:18px;">${s.rate}%</strong>
         </div>
-        <div style="font-size:12px;color:#e5e7eb;margin-top:6px;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')} • ${s.wins}勝 ${s.losses}敗</div>
+        <div style="font-size:12px;color:#e5e7eb;margin-top:6px;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'スタンダード')} • ${s.wins}勝 ${s.losses}敗</div>
       </button>
     `;
   }).join('');
@@ -212,7 +269,7 @@ function renderMatches(deck) {
     <div style="border:1px solid #475569;border-radius:14px;padding:12px;background:#1e293b;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;color:#ffffff;">
       <div>
         <div style="font-weight:900;color:${m.result === 'win' ? '#86efac' : '#fca5a5'};">${m.result === 'win' ? 'WIN' : 'LOSS'}</div>
-        <div style="color:#ffffff;">${escapeHtml(m.eventType || 'Ranked')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
+        <div style="color:#ffffff;">${escapeHtml(m.rankFormat || '未設定')} • ${m.isBo3 ? 'Bo3' : 'Bo1'}</div>
         <div style="font-size:12px;color:#e5e7eb;">相手: ${escapeHtml(m.opponent || 'Unknown')} / ${m.wentFirst ? '先手' : '後手'}</div>
         <div style="font-size:12px;color:#e5e7eb;">${new Date(m.date).toLocaleString()}</div>
         ${m.notes ? `<div style="font-size:12px;color:#ffffff;margin-top:4px;">${escapeHtml(m.notes)}</div>` : ''}
@@ -225,12 +282,13 @@ function renderMatches(deck) {
 function render() {
   ensureState();
   const global = calcGlobal();
+  const allMatches = state.decks.flatMap(d => Array.isArray(d.matches) ? d.matches : []);
   const deck = getSelectedDeck();
   const deckStats = deck ? calcStats(deck.matches) : { wins: 0, losses: 0, total: 0, rate: 0 };
 
   document.body.innerHTML = `
-    <div style="display:grid;grid-template-columns:320px 1fr;min-height:100vh;background:#0f172a;color:#ffffff;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-      <aside style="padding:16px;border-right:1px solid #334155;background:#111827;color:#ffffff;">
+    <div style="display:grid;grid-template-columns:340px 1fr;min-height:100vh;background:#0f172a;color:#ffffff;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <aside style="padding:16px;border-right:1px solid #334155;background:#111827;color:#ffffff;overflow:auto;">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
           <div>
             <div style="font-size:24px;font-weight:900;color:#ffffff;">ArenaStats</div>
@@ -243,6 +301,8 @@ function render() {
           <div style="font-size:13px;color:#dbeafe;font-weight:bold;">全デッキ通算勝率</div>
           <div style="font-size:34px;font-weight:1000;margin-top:4px;color:#ffffff;">${global.rate}%</div>
           <div style="font-size:13px;color:#ffffff;">${global.wins}勝 ${global.losses}敗 / ${global.total}戦</div>
+          <div style="margin-top:10px;font-size:13px;font-weight:bold;color:#dbeafe;">ランク戦別明細</div>
+          ${renderRankBreakdown(allMatches)}
         </div>
 
         <div style="margin-top:14px;">
@@ -250,12 +310,12 @@ function render() {
         </div>
       </aside>
 
-      <main style="padding:16px;background:#0f172a;color:#ffffff;">
+      <main style="padding:16px;background:#0f172a;color:#ffffff;overflow:auto;">
         ${deck ? `
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">
             <div>
               <div style="font-size:28px;font-weight:900;color:#ffffff;">${escapeHtml(deck.name)}</div>
-              <div style="font-size:13px;color:#e5e7eb;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'Standard')}</div>
+              <div style="font-size:13px;color:#e5e7eb;">${escapeHtml(deck.archetype || 'Archetype未設定')} • ${escapeHtml(deck.format || 'スタンダード')}</div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <button onclick="addMatch()" style="background:#2563eb;border:none;color:white;padding:10px 12px;border-radius:12px;font-weight:bold;cursor:pointer;">＋ 対戦追加</button>
@@ -269,6 +329,8 @@ function render() {
               <h3 style="margin:0 0 12px;color:#ffffff;">デッキ勝率</h3>
               <div style="font-size:48px;font-weight:1000;line-height:1;color:#ffffff;">${deckStats.rate}%</div>
               <div style="color:#ffffff;margin-top:6px;">${deckStats.wins}勝 ${deckStats.losses}敗 / ${deckStats.total}戦</div>
+              <div style="margin-top:12px;font-size:13px;font-weight:bold;color:#dbeafe;">ランク戦別明細</div>
+              ${renderRankBreakdown(deck.matches)}
             </section>
             <section style="border:1px solid #475569;background:#1e293b;border-radius:18px;padding:16px;color:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.28);">
               <h3 style="margin:0 0 12px;color:#ffffff;">内訳</h3>
