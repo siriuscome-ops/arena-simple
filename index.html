@@ -11,6 +11,7 @@
 const STORAGE_KEY = 'arena_stats_stable_v3';
 const OLD_STORAGE_KEYS = ['arena_stats_stable_v2', 'arena_stats_stable_v1'];
 const RANK_FORMATS = ['スタンダード', 'アルケミー', 'ヒストリック', 'パイオニア', 'タイムレス'];
+let lastRankFormat = localStorage.getItem('arena_stats_last_rank_format') || 'スタンダード';
 
 function saveState(data) {
   try {
@@ -149,7 +150,7 @@ function addMatch() {
 
 function openMatchForm() {
   const deck = getSelectedDeck();
-  const defaultFormat = deck ? normalizeRankFormat(deck.format) : 'スタンダード';
+  const defaultFormat = RANK_FORMATS.includes(lastRankFormat) ? lastRankFormat : (deck ? normalizeRankFormat(deck.format) : 'スタンダード');
   const options = RANK_FORMATS.map(f => `<option value="${f}" ${f === defaultFormat ? 'selected' : ''}>${f}</option>`).join('');
   const modal = document.createElement('div');
   modal.id = 'matchModal';
@@ -209,6 +210,8 @@ function saveMatchFromForm() {
   const deck = getSelectedDeck();
   if (!deck) return;
   const rankFormat = document.getElementById('form_rank_format').value;
+  lastRankFormat = rankFormat;
+  localStorage.setItem('arena_stats_last_rank_format', rankFormat);
   deck.matches.unshift({
     id: uid(),
     date: new Date().toISOString(),
